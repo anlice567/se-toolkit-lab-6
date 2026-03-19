@@ -5,13 +5,10 @@
 
 # First, build the application in the `/app` directory.
 # See `Dockerfile` for details.
-# A portable solution: download image from Docker Hub.
-# FROM astral/uv:python3.14-bookworm-slim AS builder
-
-# A less portable solution: download image through a cache proxy provided by the University.
-# This solution is necessary to avoid "Too many requests" errors.
-# This solution may not work outside of the University network.
-FROM harbor.pg.innopolis.university/docker-hub-cache/astral/uv:python3.14-bookworm-slim AS builder
+# REGISTRY_PREFIX: empty for Docker Hub, or university harbor cache.
+# Set via docker-compose build args or --build-arg.
+ARG REGISTRY_PREFIX=harbor.pg.innopolis.university/docker-hub-cache/
+FROM ${REGISTRY_PREFIX}astral/uv:python3.14-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 # Omit development dependencies
@@ -37,13 +34,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # Then, use a final image without uv
-# A portable solution: download image from Docker Hub.
-# FROM python:3.14.2-slim-bookworm
-
-# A less portable solution: download image through a cache proxy provided by the University.
-# This solution is necessary to avoid "Too many requests" errors.
-# This solution may not work outside of the University network.
-FROM harbor.pg.innopolis.university/docker-hub-cache/python:3.14.2-slim-bookworm
+ARG REGISTRY_PREFIX=harbor.pg.innopolis.university/docker-hub-cache/
+FROM ${REGISTRY_PREFIX}python:3.14.2-slim-bookworm
 # It is important to use the image that matches the builder, as the path to the
 # Python executable must be the same, e.g., using `python:3.11-slim-bookworm`
 # will fail.

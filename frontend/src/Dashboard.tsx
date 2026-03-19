@@ -47,24 +47,59 @@ interface GroupEntry {
   students: number
 }
 
+interface ItemRecord {
+  id: number
+  type: string
+  title: string
+}
+
+async function checkedJson<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+  return res.json() as Promise<T>
+}
+
 function Dashboard({ token }: { token: string }) {
-  const [lab, setLab] = useState('lab-04')
+  const [labs, setLabs] = useState<string[]>([])
+  const [lab, setLab] = useState('')
   const [scores, setScores] = useState<ScoreBucket[]>([])
   const [passRates, setPassRates] = useState<PassRate[]>([])
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [groups, setGroups] = useState<GroupEntry[]>([])
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Fetch available labs dynamically from /items
   useEffect(() => {
     const headers = { Authorization: `Bearer ${token}` }
+    fetch('/items/', { headers })
+      .then((r) => checkedJson<ItemRecord[]>(r))
+      .then((items) => {
+        const labIds = items
+          .filter((i) => i.type === 'lab')
+          .map((i) => {
+            const m = i.title.match(/Lab\s+(\d+)/i)
+            return m ? `lab-${m[1].padStart(2, '0')}` : null
+          })
+          .filter((id): id is string => id !== null)
+          .sort()
+        setLabs(labIds)
+        if (labIds.length > 0 && !lab) setLab(labIds[labIds.length - 1])
+      })
+      .catch((err: Error) => setError(err.message))
+  }, [token])
+
+  useEffect(() => {
+    if (!lab) return
+    const headers = { Authorization: `Bearer ${token}` }
+    setLoading(true)
 
     Promise.all([
-      fetch(`/analytics/scores?lab=${lab}`, { headers }).then((r) => r.json()),
-      fetch(`/analytics/pass-rates?lab=${lab}`, { headers }).then((r) => r.json()),
-      fetch(`/analytics/timeline?lab=${lab}`, { headers }).then((r) => r.json()),
-      fetch(`/analytics/groups?lab=${lab}`, { headers }).then((r) => r.json()),
+      fetch(`/analytics/scores?lab=${lab}`, { headers }).then((r) => checkedJson<ScoreBucket[]>(r)),
+      fetch(`/analytics/pass-rates?lab=${lab}`, { headers }).then((r) => checkedJson<PassRate[]>(r)),
+      fetch(`/analytics/timeline?lab=${lab}`, { headers }).then((r) => checkedJson<TimelineEntry[]>(r)),
+      fetch(`/analytics/groups?lab=${lab}`, { headers }).then((r) => checkedJson<GroupEntry[]>(r)),
     ])
-      .then(([s, p, t, g]: [ScoreBucket[], PassRate[], TimelineEntry[], GroupEntry[]]) => {
+      .then(([s, p, t, g]) => {
         setScores(s)
         setPassRates(p)
         setTimeline(t)
@@ -72,9 +107,11 @@ function Dashboard({ token }: { token: string }) {
         setError('')
       })
       .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
   }, [token, lab])
 
   if (error) return <p>Error loading analytics: {error}</p>
+  if (loading) return <p>Loading analytics...</p>
 
   const scoreData = {
     labels: scores.map((s) => s.bucket),
@@ -125,7 +162,7 @@ function Dashboard({ token }: { token: string }) {
       <div className="lab-selector">
         <label>Lab: </label>
         <select value={lab} onChange={(e) => setLab(e.target.value)}>
-          {['lab-01', 'lab-02', 'lab-03', 'lab-04', 'lab-05', 'lab-06'].map((l) => (
+          {labs.map((l) => (
             <option key={l} value={l}>
               {l}
             </option>

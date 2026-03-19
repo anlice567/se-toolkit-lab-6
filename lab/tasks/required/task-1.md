@@ -51,7 +51,7 @@ uv run agent.py "What does REST stand for?"
 
 Your agent needs an LLM that supports the OpenAI-compatible chat completions API. You are free to use any provider.
 
-**Recommended: [Set up the Qwen Code API on your VM](../../../wiki/qwen.md#set-up-the-qwen-code-api-remote)**
+**Recommended: [Set up the Qwen Code API on your VM](../../../wiki/qwen-code-api.md#set-up-the-qwen-code-api-remote)**
 
 [Qwen Code](../../../wiki/qwen.md#what-is-qwen-code) provides **1000 free requests per day**, works from Russia, and requires no credit card.
 

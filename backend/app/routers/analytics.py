@@ -209,7 +209,7 @@ async def get_completion_rate(
     )
     passed_learners = (await session.exec(passed_stmt)).one()
 
-    rate = (passed_learners / total_learners) * 100
+    rate = (passed_learners / total_learners) * 100 if total_learners else 0.0
 
     return {
         "lab": lab,
