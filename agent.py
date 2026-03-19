@@ -123,6 +123,32 @@ def get_tool_schemas() -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_api",
+                "description": "Call the backend API with authentication. Use for querying system data, checking status codes, and diagnosing API errors.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "type": "string",
+                            "description": "HTTP method (GET, POST, PUT, DELETE)",
+                            "enum": ["GET", "POST", "PUT", "DELETE"],
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "API path (e.g., /items/, /analytics/completion-rate)",
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "JSON request body for POST/PUT requests (optional)",
+                        },
+                    },
+                    "required": ["method", "path"],
+                },
+            },
+        },
     ]
 
 
@@ -132,6 +158,12 @@ def execute_tool(tool_name: str, args: dict) -> str:
         return read_file(args.get("path", ""))
     elif tool_name == "list_files":
         return list_files(args.get("path", ""))
+    elif tool_name == "query_api":
+        return query_api(
+            args.get("method", "GET"),
+            args.get("path", ""),
+            args.get("body"),
+        )
     else:
         return f"Error: Unknown tool: {tool_name}"
 
@@ -153,6 +185,77 @@ def load_env() -> dict[str, str]:
                 key, value = line.split("=", 1)
                 env[key.strip()] = value.strip()
     return env
+
+
+def load_docker_env() -> dict[str, str]:
+    """Load LMS_API_KEY from .env.docker.secret."""
+    env_file = Path(__file__).parent / ".env.docker.secret"
+    if not env_file.exists():
+        return {}
+
+    env = {}
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                env[key.strip()] = value.strip()
+    return env
+
+
+def query_api(method: str, path: str, body: str | None = None) -> str:
+    """
+    Call the backend API with authentication.
+
+    Args:
+        method: HTTP method (GET, POST, PUT, DELETE)
+        path: API path (e.g., /items/)
+        body: Optional JSON request body
+
+    Returns:
+        JSON string with status_code and body, or error message
+    """
+    # Load configuration
+    docker_env = load_docker_env()
+    agent_env = load_env()
+
+    lms_api_key = docker_env.get("LMS_API_KEY", "")
+    api_base = agent_env.get("AGENT_API_BASE_URL", "http://localhost:42002")
+
+    # Build URL
+    url = f"{api_base}{path}"
+
+    # Build headers
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": lms_api_key,
+    }
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            if method == "GET":
+                response = client.get(url, headers=headers)
+            elif method == "POST":
+                response = client.post(url, headers=headers, content=body or "{}")
+            elif method == "PUT":
+                response = client.put(url, headers=headers, content=body or "{}")
+            elif method == "DELETE":
+                response = client.delete(url, headers=headers)
+            else:
+                return f"Error: Unknown method: {method}"
+
+            # Return response as JSON string
+            result = {
+                "status_code": response.status_code,
+                "body": response.text,
+            }
+            return json.dumps(result)
+    except httpx.HTTPError as e:
+        return f"Error: API request failed: {e}"
+    except Exception as e:
+        return f"Error: {e}"
 
 
 def call_llm(
@@ -213,17 +316,30 @@ def run_agentic_loop(
     Returns (answer, source, tool_calls).
     """
     # System prompt
-    system_prompt = """You are a documentation assistant with access to two tools:
+    system_prompt = """You are a documentation and system assistant with access to three tools:
 - list_files: List files in a directory
 - read_file: Read contents of a file
+- query_api: Call the backend API (for system facts and data queries)
 
-To answer questions:
-1. Use list_files to explore the wiki/ directory structure
-2. Use read_file to read relevant files and find the answer
-3. Include the source reference (file path + section anchor like #heading) in your final answer
-4. Maximum 10 tool calls per question
+Tool selection guide:
+- Use list_files/read_file for:
+  - Wiki documentation questions
+  - Source code questions
+  - Configuration file questions
+- Use query_api for:
+  - Checking HTTP status codes
+  - Querying database counts (e.g., number of items)
+  - Testing API endpoints
+  - Diagnosing API errors
+  - System facts (framework, ports, etc.)
 
-Always provide a source reference in your final answer.
+Always cite sources:
+- For wiki: wiki/filename.md#section
+- For source code: path/to/file.py
+- For API: the endpoint path (e.g., GET /items/)
+- For system facts: indicate it's from the running system
+
+Maximum 10 tool calls per question.
 """
 
     # Initialize messages

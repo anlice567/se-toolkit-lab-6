@@ -109,3 +109,78 @@ def test_documentation_agent_uses_list_files() -> None:
     # Verify list_files was used
     tool_names = [call.get("tool") for call in output["tool_calls"]]
     assert "list_files" in tool_names, "Expected list_files to be called"
+
+
+def test_system_agent_uses_read_file_for_framework() -> None:
+    """Test that agent uses read_file to find backend framework."""
+    project_root = Path(__file__).parent.parent.parent
+    agent_path = project_root / "agent.py"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "uv",
+            "run",
+            "agent.py",
+            "What Python web framework does the backend use?",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        timeout=60,
+    )
+
+    # Check exit code
+    assert result.returncode == 0, f"Agent failed: {result.stderr}"
+
+    # Parse stdout as JSON
+    output = json.loads(result.stdout)
+
+    # Verify required fields
+    assert "answer" in output, "Missing 'answer' field"
+    assert "tool_calls" in output, "Missing 'tool_calls' field"
+
+    # Verify read_file was used
+    tool_names = [call.get("tool") for call in output["tool_calls"]]
+    assert "read_file" in tool_names, "Expected read_file to be called"
+
+    # Verify answer contains FastAPI
+    assert "fastapi" in output["answer"].lower() or "FastAPI" in output["answer"], (
+        f"Expected FastAPI in answer, got: {output['answer']}"
+    )
+
+
+def test_system_agent_uses_query_api() -> None:
+    """Test that agent uses query_api for data questions."""
+    project_root = Path(__file__).parent.parent.parent
+    agent_path = project_root / "agent.py"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "uv",
+            "run",
+            "agent.py",
+            "How many items are in the database?",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        timeout=60,
+    )
+
+    # Check exit code
+    assert result.returncode == 0, f"Agent failed: {result.stderr}"
+
+    # Parse stdout as JSON
+    output = json.loads(result.stdout)
+
+    # Verify required fields
+    assert "answer" in output, "Missing 'answer' field"
+    assert "tool_calls" in output, "Missing 'tool_calls' field"
+
+    # Verify query_api was used
+    tool_names = [call.get("tool") for call in output["tool_calls"]]
+    assert "query_api" in tool_names, "Expected query_api to be called"
